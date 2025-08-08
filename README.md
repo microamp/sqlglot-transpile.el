@@ -2,6 +2,7 @@
 
 - [sqlglot-transpile.el](#sqlglot-transpile.el)
   - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
   - [Usage](#usage)
   - [License](#license)
 
@@ -17,6 +18,16 @@ This elisp package provides a thin wrapper around SQLGlot's transpile function f
 
   ``` bash
   python -m pip install sqlglot
+  ```
+
+## Installation
+
+- Emacs 30.1+:
+
+  ``` elisp
+  (use-package sqlglot-transpile
+    :ensure t
+    :vc (:url "https://github.com/microamp/sqlglot-transpile.el" :rev :newest))
   ```
 
 ## Usage
