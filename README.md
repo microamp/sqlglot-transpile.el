@@ -4,6 +4,7 @@
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
   - [Usage](#usage)
+  - [TODOs](#todos)
   - [License](#license)
 
 # sqlglot-transpile.el
@@ -38,6 +39,12 @@ This elisp package provides a thin wrapper around SQLGlot's transpile function f
 ;; M-x sqlglot-format-region    - Format/pretty-print selected SQL
 ;; M-x sqlglot-format-buffer    - Format/pretty-print entire buffer
 ```
+
+## TODOs
+
+- [ ] Fetch supported dialects dynamically from SQLGlot
+
+- [ ] Use Transient for configuriting read and write dialects
 
 ## License
 
