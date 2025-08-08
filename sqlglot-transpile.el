@@ -54,6 +54,7 @@ If nil, assumes script is in the same directory as this file."
   :type 'string
   :group 'sqlglot)
 
+;; TODO: Read dynamically
 (defconst sqlglot-supported-dialects
   '("athena" "bigquery" "clickhouse" "databricks" "doris" "dremio"
     "drill" "druid" "duckdb" "dune" "fabric" "hive" "materialize"
