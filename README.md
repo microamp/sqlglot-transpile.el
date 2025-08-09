@@ -44,7 +44,7 @@ This elisp package provides a thin wrapper around SQLGlot's transpile function f
 
 - [ ] Fetch supported dialects dynamically from SQLGlot
 
-- [ ] Use Transient for configuriting read and write dialects
+- [ ] Use Transient for configuring read and write dialects
 
 ## License
 
