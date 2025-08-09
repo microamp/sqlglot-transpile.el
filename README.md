@@ -28,7 +28,15 @@ This elisp package provides a thin wrapper around SQLGlot's transpile function f
   ``` elisp
   (use-package sqlglot-transpile
     :ensure t
-    :vc (:url "https://github.com/microamp/sqlglot-transpile.el" :rev :newest))
+    :vc (:url "https://github.com/microamp/sqlglot-transpile.el" :rev :newest)
+    :bind (:map
+           sql-mode-map
+           ("C-c C-f" . sqlglot-format-region)
+           ("C-c C-c" . sqlglot-transpile-region))
+    :custom
+    (sqlglot-default-read-dialect "postgresql")
+    (sqlglot-default-write-dialect "duckdb")
+    (sqlglot-default-identify t))
   ```
 
 ## Usage
@@ -40,9 +48,11 @@ This elisp package provides a thin wrapper around SQLGlot's transpile function f
 ;; M-x sqlglot-format-buffer    - Format/pretty-print entire buffer
 ```
 
+**Note**: When called with a prefix argument (`C-u`), all interactive functions will prompt you to specify read dialect, write dialect, and whether to delimit all identifiers.
+
 ## TODOs
 
-- [ ] Fetch supported dialects dynamically from SQLGlot
+- [x] Fetch supported dialects dynamically from SQLGlot
 
 - [ ] Use Transient for configuring read and write dialects
 
