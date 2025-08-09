@@ -44,30 +44,42 @@ If nil, assumes script is in the same directory as this file."
                  (file :tag "Custom path"))
   :group 'sqlglot)
 
-(defcustom sqlglot-default-read-dialect "mysql"
+(defcustom sqlglot-default-read-dialect nil
   "Default read SQL dialect for transpilation."
   :type 'string
   :group 'sqlglot)
 
-(defcustom sqlglot-default-write-dialect "postgresql"
+(defcustom sqlglot-default-write-dialect nil
   "Default write SQL dialect for transpilation."
   :type 'string
   :group 'sqlglot)
 
-;; TODO: Read dynamically
-(defconst sqlglot-supported-dialects
-  '("athena" "bigquery" "clickhouse" "databricks" "doris" "dremio"
-    "drill" "druid" "duckdb" "dune" "fabric" "hive" "materialize"
-    "mysql" "oracle" "postgres" "postgresql" "presto" "prql"
-    "redshift" "risingwave" "snowflake" "spark" "spark2" "sqlite"
-    "starrocks" "tableau" "teradata" "trino" "tsql" "exasol")
-  "List of SQL dialects supported by SQLGlot.")
+(defcustom sqlglot-default-identify t
+  "Default value for identify parameter in transpilation.
+When t, try to preserve SQL formatting and casing.
+When nil, apply SQLGlot's default formatting."
+  :type 'boolean
+  :group 'sqlglot)
+
+(defvar sqlglot--cached-dialects nil
+  "Cached list of SQL dialects supported by SQLGlot.")
+
+(defun sqlglot--get-supported-dialects ()
+  "Get the list of SQL dialects supported by SQLGlot."
+  (unless sqlglot--cached-dialects
+    (let* ((json-array-type 'list)  ; Make JSON arrays return lists, not vectors
+           (dialects-json (sqlglot--run-script-command '("dialects")))
+           (dialects-list (json-read-from-string dialects-json)))
+      (setq sqlglot--cached-dialects dialects-list)))
+  (append sqlglot--cached-dialects nil))
 
 (defun sqlglot--get-script-path ()
   "Get the path to the sqlglot_transpile.py script."
   (or sqlglot-script-path
-      (expand-file-name "sqlglot_transpile.py"
-                        (file-name-directory (or load-file-name buffer-file-name)))))
+      (let ((base-file (or load-file-name buffer-file-name)))
+        (if base-file
+            (expand-file-name "sqlglot_transpile.py" (file-name-directory base-file))
+          (expand-file-name "sqlglot_transpile.py" default-directory)))))
 
 (defun sqlglot--run-script-command (args)
   "Execute the SQLGlot script with ARGS and return the result."
@@ -93,46 +105,47 @@ If nil, assumes script is in the same directory as this file."
             (buffer-string)
           (error "SQLGlot execution failed: %s" (buffer-string)))))))
 
-(defun sqlglot--transpile-sql (sql read-dialect write-dialect)
-  "Transpile SQL from READ-DIALECT to WRITE-DIALECT using SQLGlot."
+(defun sqlglot--transpile-sql (sql read-dialect write-dialect &optional identify)
+  "Transpile SQL from READ-DIALECT to WRITE-DIALECT using SQLGlot.
+IDENTIFY controls whether to preserve SQL formatting and casing."
   (let ((args (append (list "transpile")
                       (when read-dialect (list "--read" read-dialect))
-                      (when write-dialect (list "--write" write-dialect)))))
+                      (when write-dialect (list "--write" write-dialect))
+                      (when (or identify (and (null identify) sqlglot-default-identify))
+                        (list "--identify")))))
     (sqlglot--run-script-with-stdin args sql)))
 
-(defun sqlglot--format-sql (sql &optional read-dialect write-dialect)
-  "Format/pretty-print SQL using SQLGlot with optional READ-DIALECT and WRITE-DIALECT."
-  (let ((args (cond
-               ((and read-dialect write-dialect)
-                (list "format" "--read" read-dialect "--write" write-dialect))
-               (read-dialect
-                (list "format" "--read" read-dialect))
-               (write-dialect
-                (list "format" "--write" write-dialect))
-               (t
-                (list "format")))))
+(defun sqlglot--format-sql (sql &optional read-dialect write-dialect identify)
+  "Format/pretty-print SQL using SQLGlot with optional READ-DIALECT, WRITE-DIALECT, and IDENTIFY."
+  (let ((args (append (list "format")
+                      (when read-dialect (list "--read" read-dialect))
+                      (when write-dialect (list "--write" write-dialect))
+                      (when identify (list "--identify")))))
     (sqlglot--run-script-with-stdin args sql)))
 
 (defun sqlglot--read-dialect (prompt default)
   "Read a SQL dialect from user with PROMPT and DEFAULT value."
-  (completing-read prompt sqlglot-supported-dialects nil nil nil nil default))
+  (completing-read prompt (sqlglot--get-supported-dialects) nil nil nil nil default))
 
 ;;;###autoload
-(defun sqlglot-transpile-region (start end &optional read-dialect write-dialect)
+(defun sqlglot-transpile-region (start end &optional read-dialect write-dialect identify)
   "Transpile SQL in region from READ-DIALECT to WRITE-DIALECT.
-START and END define the region boundaries."
+START and END define the region boundaries.
+IDENTIFY controls whether to preserve SQL formatting and casing."
   (interactive
    (let ((dialects (when current-prefix-arg
                      (list (let ((read-dialect (sqlglot--read-dialect "Read dialect (optional): " "")))
                              (if (string-empty-p read-dialect) nil read-dialect))
                            (let ((write-dialect (sqlglot--read-dialect "Write dialect (optional): " "")))
-                             (if (string-empty-p write-dialect) nil write-dialect))))))
+                             (if (string-empty-p write-dialect) nil write-dialect))
+                           (y-or-n-p "Delimit all identifiers? ")))))
      (list (region-beginning)
            (region-end)
            (nth 0 dialects)
-           (nth 1 dialects))))
+           (nth 1 dialects)
+           (nth 2 dialects))))
   (let* ((sql (buffer-substring-no-properties start end))
-         (transpiled (sqlglot--transpile-sql sql read-dialect write-dialect)))
+         (transpiled (sqlglot--transpile-sql sql read-dialect write-dialect identify)))
     (delete-region start end)
     (insert transpiled)
     (message "Transpiled%s"
@@ -146,32 +159,37 @@ START and END define the region boundaries."
               (t "")))))
 
 ;;;###autoload
-(defun sqlglot-transpile-buffer (&optional read-dialect write-dialect)
-  "Transpile entire buffer from READ-DIALECT to WRITE-DIALECT."
+(defun sqlglot-transpile-buffer (&optional read-dialect write-dialect identify)
+  "Transpile entire buffer from READ-DIALECT to WRITE-DIALECT.
+IDENTIFY controls whether to preserve SQL formatting and casing."
   (interactive
    (when current-prefix-arg
      (list (let ((read-dialect (sqlglot--read-dialect "Read dialect (optional): " "")))
              (if (string-empty-p read-dialect) nil read-dialect))
            (let ((write-dialect (sqlglot--read-dialect "Write dialect (optional): " "")))
-             (if (string-empty-p write-dialect) nil write-dialect)))))
-  (sqlglot-transpile-region (point-min) (point-max) read-dialect write-dialect))
+             (if (string-empty-p write-dialect) nil write-dialect))
+           (y-or-n-p "Delimit all identifiers? "))))
+  (sqlglot-transpile-region (point-min) (point-max) read-dialect write-dialect identify))
 
 ;;;###autoload
-(defun sqlglot-format-region (start end &optional read-dialect write-dialect)
+(defun sqlglot-format-region (start end &optional read-dialect write-dialect identify)
   "Format/pretty-print SQL in region with optional READ-DIALECT and WRITE-DIALECT.
-START and END define the region boundaries."
+START and END define the region boundaries.
+IDENTIFY controls whether to preserve SQL formatting and casing."
   (interactive
    (let ((dialects (when current-prefix-arg
                      (list (let ((read-dialect (sqlglot--read-dialect "Read dialect (optional): " "")))
                              (if (string-empty-p read-dialect) nil read-dialect))
                            (let ((write-dialect (sqlglot--read-dialect "Write dialect (optional): " "")))
-                             (if (string-empty-p write-dialect) nil write-dialect))))))
+                             (if (string-empty-p write-dialect) nil write-dialect))
+                           (y-or-n-p "Delimit all identifiers? ")))))
      (list (region-beginning)
            (region-end)
            (nth 0 dialects)
-           (nth 1 dialects))))
+           (nth 1 dialects)
+           (nth 2 dialects))))
   (let* ((sql (buffer-substring-no-properties start end))
-         (formatted (sqlglot--format-sql sql read-dialect write-dialect)))
+         (formatted (sqlglot--format-sql sql read-dialect write-dialect identify)))
     (delete-region start end)
     (insert formatted)
     (message "Formatted SQL%s"
@@ -185,15 +203,17 @@ START and END define the region boundaries."
               (t "")))))
 
 ;;;###autoload
-(defun sqlglot-format-buffer (&optional read-dialect write-dialect)
-  "Format/pretty-print entire buffer with optional READ-DIALECT and WRITE-DIALECT."
+(defun sqlglot-format-buffer (&optional read-dialect write-dialect identify)
+  "Format/pretty-print entire buffer with optional READ-DIALECT and WRITE-DIALECT.
+IDENTIFY controls whether to preserve SQL formatting and casing."
   (interactive
    (when current-prefix-arg
      (list (let ((read-dialect (sqlglot--read-dialect "Read dialect (optional): " "")))
              (if (string-empty-p read-dialect) nil read-dialect))
            (let ((write-dialect (sqlglot--read-dialect "Write dialect (optional): " "")))
-             (if (string-empty-p write-dialect) nil write-dialect)))))
-  (sqlglot-format-region (point-min) (point-max) read-dialect write-dialect))
+             (if (string-empty-p write-dialect) nil write-dialect))
+           (y-or-n-p "Delimit all identifiers? "))))
+  (sqlglot-format-region (point-min) (point-max) read-dialect write-dialect identify))
 
 ;;;###autoload
 (defun sqlglot-check-installation ()

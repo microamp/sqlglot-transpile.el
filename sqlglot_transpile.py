@@ -23,11 +23,21 @@ except ImportError:
 
 
 def transpile_sql(
-    sql: str, read_dialect: Optional[str], write_dialect: Optional[str], pretty: bool = False
+    sql: str,
+    read_dialect: Optional[str],
+    write_dialect: Optional[str],
+    identify: bool = False,
+    pretty: bool = False,
 ) -> str:
     """Transpile SQL from one dialect to another with optional pretty printing."""
     try:
-        result = sqlglot.transpile(sql, read=read_dialect, write=write_dialect, pretty=pretty)
+        result = sqlglot.transpile(
+            sql,
+            read=read_dialect,
+            write=write_dialect,
+            identify=identify,
+            pretty=pretty,
+        )
         if result:
             return result[0]
         else:
@@ -37,17 +47,12 @@ def transpile_sql(
         raise RuntimeError(f"SQL {operation} failed: {e}")
 
 
-def format_sql(sql: str, read_dialect: Optional[str] = None, write_dialect: Optional[str] = None) -> str:
-    """Format/pretty-print SQL with optional read_dialect and write_dialect."""
-    return transpile_sql(sql, read_dialect, write_dialect, pretty=True)
-
-
 def get_version() -> str:
     """Get SQLGlot version."""
     return getattr(sqlglot, "__version__", "unknown")
 
 
-def list_dialects() -> list:
+def list_dialects() -> list[str]:
     """List all supported dialects."""
     # Get dialects from sqlglot.dialects module
     from sqlglot import dialects
@@ -119,17 +124,22 @@ def main():
     transpile_parser = subparsers.add_parser(
         "transpile", help="Transpile SQL between dialects"
     )
-    transpile_parser.add_argument("--read", help="Source dialect (optional)")
-    transpile_parser.add_argument("--write", help="Target dialect (optional)")
+    transpile_parser.add_argument("--read", help="Read dialect (optional)")
+    transpile_parser.add_argument("--write", help="Write dialect (optional)")
+    transpile_parser.add_argument(
+        "--identify", action="store_true", help="Preserve SQL formatting and casing"
+    )
     transpile_parser.add_argument(
         "--sql", help="SQL to transpile (if not provided, reads from stdin)"
     )
 
     # Format command
     format_parser = subparsers.add_parser("format", help="Format/pretty-print SQL")
-    format_parser.add_argument("--dialect", help="SQL dialect (optional)")
-    format_parser.add_argument("--read", help="Source dialect (alias for --dialect)")
-    format_parser.add_argument("--write", help="Target dialect (alias for --dialect)")
+    format_parser.add_argument("--read", help="Read dialect (optional)")
+    format_parser.add_argument("--write", help="Write dialect (optional)")
+    format_parser.add_argument(
+        "--identify", action="store_true", help="Preserve SQL formatting and casing"
+    )
     format_parser.add_argument(
         "--sql", help="SQL to format (if not provided, reads from stdin)"
     )
@@ -151,10 +161,10 @@ def main():
             print(get_version())
 
         elif args.command == "dialects":
-            dialects = list_dialects()
+            dialects: list[str] = list_dialects()
             print(json.dumps(dialects, indent=2))
 
-        elif args.command == "transpile":
+        elif args.command in ["transpile", "format"]:
             if args.sql:
                 sql = args.sql
             else:
@@ -164,21 +174,14 @@ def main():
                 print("Error: No SQL provided", file=sys.stderr)
                 sys.exit(1)
 
-            result = transpile_sql(sql, args.read, args.write)
-            print(result, end="")
-
-        elif args.command == "format":
-            if args.sql:
-                sql = args.sql
-            else:
-                sql = sys.stdin.read()
-
-            if not sql.strip():
-                print("Error: No SQL provided", file=sys.stderr)
-                sys.exit(1)
-
-            # Use read and write dialects for formatting
-            result: str = format_sql(sql, args.read or args.dialect, args.write or args.dialect)
+            pretty: bool = args.command == "format"
+            result: str = transpile_sql(
+                sql,
+                args.read,
+                args.write,
+                identify=args.identify,
+                pretty=pretty,
+            )
             print(result, end="")
 
     except Exception as e:
